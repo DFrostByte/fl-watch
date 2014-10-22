@@ -15,7 +15,7 @@
 # GLOBALS
 ###############################################################################
 
-_SCRIPT="$0"
+_SCRIPT="$(basename "$0")"
 
 _playlist_filename=''
 
@@ -90,7 +90,7 @@ function _validate_file_access
 		esac
 	done
 
-	return true
+	return 0
 }
 
 

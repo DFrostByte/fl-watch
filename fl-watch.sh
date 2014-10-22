@@ -30,12 +30,12 @@ _playlist_filename=''
 
 function _log
 {
-	echo "$_SCRIPT: $@" 1>&2
+	echo "$_SCRIPT: $@" >&2
 }
 
 function _err
 {
-	echo "Error: $_SCRIPT: $@" 1>&2
+	echo "Error: $_SCRIPT: $@" >&2
 }
 
 function _die
@@ -43,6 +43,56 @@ function _die
 	_err "$@"
 	exit 1
 }
+
+function _validate_file_access
+# @desc:         Test that the file exists, is readable, writeable and isn't empty.
+#                If validation fails, exit with error message.
+# @param $1:     Filename.
+# @param $2 ...: File tests (f r w s)
+# @return:       True if valid. Aborts if fails.
+{
+	local filename="$1"
+
+	[ -z "$2" ] && _die "$LINENO: No test parameters given."
+
+	while [ -n "$2" ]
+	do
+		shift 1
+
+		case "$1" in
+			'f')
+				if   ! [ -f "$filename" ]
+				then
+					_die "$LINENO: Not a file '$filename'"
+				fi
+			;;
+			'r')
+				if ! [ -r "$filename" ]
+				then
+					_die "$LINENO: Not readable '$filename'"
+				fi
+			;;
+			'w')
+				if ! [ -w "$filename" ]
+				then
+					_die "$LINENO: Not writeable '$filename'"
+				fi
+			;;
+			's')
+				if ! [ -s "$filename" ]
+				then
+					_die "$LINENO: Empty '$filename'"
+				fi
+			;;
+			*)
+				_die "$LINENO: Invalid function parameter."
+			;;
+		esac
+	done
+
+	return true
+}
+
 
 #------------------------------------------------------------------------------
 
@@ -80,12 +130,36 @@ function _play
 
 _playlist_filename="$1"
 
+#------------------------------------------------------------------------------
+# validation
+#------------------------------------------------------------------------------
+
+_validate_file_access "$_playlist_filename" f r w s
+
 # read unwatched (not commented) filenames into array
 IFS=$'\n'
 _unwatched_filenames=(`cat "$_playlist_filename" | grep --invert-match '#'`)
+_unwatched_num=${#_unwatched_filenames[@]}
+
+if [ $_unwatched_num -lt 1 ]
+then
+	# nothing unwatched
+	_log "No unwatched files found in playlist."
+	exit 0
+fi
+
+# make sure unwatched files are readable and not empty
+for (( i=0; $i < _unwatched_num; i++ ))
+do
+	_validate_file_access "${_unwatched_filenames[$i]}" f r s
+done
+
+#------------------------------------------------------------------------------
+# play
+#------------------------------------------------------------------------------
 
 # main loop: play files one at a time, checking them off after playing
-for (( i=0; $i < ${#_unwatched_filenames[@]}; i++ ))
+for (( i=0; $i < _unwatched_num; i++ ))
 do
 	unwatched_file="${_unwatched_filenames[$i]}"
 
@@ -95,7 +169,8 @@ do
 	then
 		_mark_watched "$_playlist_filename" "$unwatched_file" || _die "$LINENO: Mark as watched failed."
 	else
-		# viewing may have been aborted or a player error occurred so end
+		# play failed.
+		# viewing may have been aborted or a player error occurred so exit
 		_log "$LINENO: Exit status of player wasn't success."
 		break
 	fi
